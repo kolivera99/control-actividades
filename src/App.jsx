@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useCallback, useRef } from "react";
+import { useState, useEffect, useMemo, useCallback } from "react";
 import { supabase } from "./supabaseClient";
 
 const ESTADOS = [
@@ -15,7 +15,6 @@ const PRIORIDADES = [
 ];
 
 const MASTER_PASSWORD = import.meta.env.VITE_MASTER_PASSWORD || "admin123";
-const SESSION_HOURS = 8;
 
 const today = () => new Date().toISOString().split("T")[0];
 const daysDiff = (d) => {
@@ -33,36 +32,9 @@ const CajaLogo = ({ size = 40 }) => (
   <img src={LOGO_SRC} alt="Caja Cusco" style={{ width: size, height: size, objectFit: "contain" }} />
 );
 
-/* ========== SESSION HELPERS ========== */
-const getSession = () => {
-  try {
-    const s = JSON.parse(localStorage.getItem("cc-session"));
-    if (!s) return null;
-    if (new Date(s.expires_at) < new Date()) { localStorage.removeItem("cc-session"); return null; }
-    return s;
-  } catch (e) { return null; }
-};
-const setSession = (user) => {
-  const expires = new Date();
-  expires.setHours(expires.getHours() + SESSION_HOURS);
-  const s = { ...user, expires_at: expires.toISOString(), last_active: new Date().toISOString() };
-  localStorage.setItem("cc-session", JSON.stringify(s));
-  return s;
-};
-const refreshSession = () => {
-  const s = getSession();
-  if (s) {
-    const expires = new Date();
-    expires.setHours(expires.getHours() + SESSION_HOURS);
-    s.expires_at = expires.toISOString();
-    s.last_active = new Date().toISOString();
-    localStorage.setItem("cc-session", JSON.stringify(s));
-  }
-};
-const clearSession = () => localStorage.removeItem("cc-session");
-
 /* ========== CSS ========== */
 const CSS = `
+@charset "UTF-8";
 @import url('https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;1,9..40,400&family=JetBrains+Mono:wght@400;500&display=swap');
 :root { --red:#c41e3a; --red-dark:#a01830; --red-light:#fce8ec; --red-dim:rgba(196,30,58,0.08); --black:#1a1a1a; --gray-dark:#6c757d; --gray-mid:#95a5a6; --gray-light:#e0e0e0; --gray-bg:#f8f9fa; --white:#ffffff; --green:#10B981; --green-bg:#D1FAE5; --yellow:#F59E0B; --yellow-bg:#FEF3C7; --blue:#3B82F6; --blue-bg:#DBEAFE; --danger:#EF4444; --danger-bg:#FEE2E2; --font:'DM Sans',sans-serif; --mono:'JetBrains Mono',monospace; --radius:8px; --radius-lg:12px; --shadow-sm:0 1px 3px rgba(0,0,0,0.06); --shadow-md:0 4px 12px rgba(0,0,0,0.08); --shadow-lg:0 8px 30px rgba(0,0,0,0.12); }
 * { margin:0; padding:0; box-sizing:border-box; }
@@ -108,7 +80,7 @@ table { width:100%; border-collapse:collapse; }
 thead th { text-align:left; padding:10px 14px; font-size:10px; font-weight:700; color:var(--gray-mid); text-transform:uppercase; letter-spacing:.5px; background:var(--gray-bg); border-bottom:1px solid var(--gray-light); white-space:nowrap; }
 tbody tr { border-bottom:1px solid var(--gray-light); transition:background .12s; cursor:pointer; } tbody tr:hover { background:var(--gray-bg); } tbody tr:last-child { border-bottom:none; }
 tbody td { padding:11px 14px; font-size:13px; vertical-align:top; }
-.task-name { font-weight:600; color:var(--black); margin-bottom:1px; display:flex; align-items:center; gap:6px; } .task-notes { font-size:12px; color:var(--gray-dark); line-height:1.4; max-width:280px; }
+.task-name { font-weight:600; color:var(--black); margin-bottom:1px; } .task-notes { font-size:12px; color:var(--gray-dark); line-height:1.4; max-width:280px; }
 .area-tag { font-size:10px; font-family:var(--mono); padding:2px 8px; border-radius:4px; background:var(--red-dim); color:var(--red); font-weight:600; white-space:nowrap; }
 .date-cell { font-family:var(--mono); font-size:12px; color:var(--gray-dark); white-space:nowrap; } .date-cell.overdue { color:var(--danger); font-weight:600; } .date-cell.soon { color:var(--yellow); font-weight:600; }
 .days-pill { font-size:10px; font-family:var(--mono); padding:2px 8px; border-radius:10px; font-weight:700; white-space:nowrap; } .days-pill.overdue { background:var(--danger-bg); color:var(--danger); } .days-pill.soon { background:var(--yellow-bg); color:#92400E; } .days-pill.ok { background:var(--green-bg); color:#065F46; }
@@ -123,13 +95,6 @@ tbody td { padding:11px 14px; font-size:13px; vertical-align:top; }
 .err { color:var(--danger); font-size:12px; margin-top:8px; } .ok-msg { color:var(--green); font-size:12px; margin-top:8px; }
 .responsive { overflow-x:auto; }
 .loading { display:flex; align-items:center; justify-content:center; height:100vh; color:var(--gray-mid); font-size:15px; }
-.new-dot { width:8px; height:8px; border-radius:50%; background:var(--red); flex-shrink:0; animation:pulse 2s infinite; }
-@keyframes pulse { 0%,100% { opacity:1; } 50% { opacity:0.4; } }
-.confirm-overlay { position:fixed; inset:0; background:rgba(26,26,26,.5); display:flex; align-items:center; justify-content:center; z-index:200; }
-.confirm-box { background:var(--white); border-radius:12px; padding:24px; width:360px; max-width:90vw; box-shadow:var(--shadow-lg); text-align:center; }
-.confirm-box h3 { font-size:15px; margin-bottom:8px; color:var(--black); }
-.confirm-box p { font-size:13px; color:var(--gray-dark); margin-bottom:20px; }
-.confirm-actions { display:flex; gap:10px; justify-content:center; }
 @media(max-width:768px) { .main { padding:16px; } .topbar { padding:0 16px; } .stats { grid-template-columns:repeat(2,1fr); } .modal { padding:24px 20px; } }
 `;
 
@@ -144,42 +109,16 @@ const DaysBadge = ({ fecha, estado }) => {
   return <span className="days-pill ok">{d}d</span>;
 };
 
-const ConfirmDialog = ({ message, onConfirm, onCancel }) => (
-  <div className="confirm-overlay" onClick={onCancel}>
-    <div className="confirm-box" onClick={(e) => e.stopPropagation()}>
-      <h3>Confirmar</h3>
-      <p>{message}</p>
-      <div className="confirm-actions">
-        <button className="btn btn-outline btn-sm" onClick={onCancel}>Cancelar</button>
-        <button className="btn btn-danger-outline btn-sm" onClick={onConfirm}>Eliminar</button>
-      </div>
-    </div>
-  </div>
-);
-
-const Login = ({ onLogin, onLoginEncrypted }) => {
+const Login = ({ onLogin, areas }) => {
   const [pw, setPw] = useState("");
   const [err, setErr] = useState("");
-  const [loading, setLoading] = useState(false);
-
-  const submit = async () => {
-    if (!pw.trim()) return;
-    setLoading(true);
-    // Check master password first
-    if (pw === MASTER_PASSWORD) {
-      setLoading(false);
-      return onLogin({ role: "gerente", area: null });
-    }
-    // Check encrypted passwords via Supabase function
-    const { data, error } = await supabase.rpc("verify_login", { input_password: pw });
-    setLoading(false);
-    if (data && data.length > 0 && data[0].is_valid) {
-      return onLogin({ role: "area", area: data[0].nombre });
-    }
-    setErr("Contrase\u00f1a incorrecta");
+  const submit = () => {
+    if (pw === MASTER_PASSWORD) return onLogin({ role: "gerente", area: null });
+    const found = areas.find((a) => a.password === pw);
+    if (found) return onLogin({ role: "area", area: found.nombre });
+    setErr("Contraseña incorrecta");
     setTimeout(() => setErr(""), 3000);
   };
-
   return (
     <div className="login-wrap">
       <div className="login-card">
@@ -191,17 +130,15 @@ const Login = ({ onLogin, onLoginEncrypted }) => {
           </div>
         </div>
         <div className="red-line" />
-        <p className="login-subtitle">Ingresa tu contrase\u00f1a para acceder al sistema.</p>
+        <p className="login-subtitle">Ingresa tu contraseña para acceder al sistema.</p>
         <div className="field">
-          <label>Contrase\u00f1a</label>
-          <input className="input" type="password" placeholder="\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022" value={pw}
+          <label>Contraseña</label>
+          <input className="input" type="password" placeholder="••••••••" value={pw}
             onChange={(e) => { setPw(e.target.value); setErr(""); }}
             onKeyDown={(e) => e.key === "Enter" && submit()} autoFocus />
         </div>
         {err && <div className="err">{err}</div>}
-        <button className="btn btn-red" onClick={submit} style={{ marginTop: 8 }}>
-          {loading ? "Verificando..." : "Ingresar"}
-        </button>
+        <button className="btn btn-red" onClick={submit} style={{ marginTop: 8 }}>Ingresar</button>
       </div>
     </div>
   );
@@ -235,14 +172,14 @@ const TaskForm = ({ onClose, onSave, areasList, edit, userArea }) => {
       <div className="modal" onClick={(e) => e.stopPropagation()}>
         <h2>{edit ? "Editar Actividad" : "Nueva Actividad"}</h2>
         <div className="field">
-          <label>{"\u00C1"}rea</label>
+          <label>Área</label>
           <select className="input" value={f.area} onChange={(e) => upd("area", e.target.value)} disabled={!!userArea}>
             {(userArea ? [{ nombre: userArea }] : areasList).map((a) => <option key={a.nombre} value={a.nombre}>{a.nombre}</option>)}
           </select>
         </div>
         <div className="field">
           <label>Actividad</label>
-          <input className="input" placeholder="Descripci\u00f3n de la actividad" value={f.actividad} onChange={(e) => upd("actividad", e.target.value)} autoFocus />
+          <input className="input" placeholder="Descripción de la actividad" value={f.actividad} onChange={(e) => upd("actividad", e.target.value)} autoFocus />
         </div>
         <div className="field">
           <label>Responsable</label>
@@ -250,13 +187,13 @@ const TaskForm = ({ onClose, onSave, areasList, edit, userArea }) => {
         </div>
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
           <div className="field"><label>Fecha Inicio</label><input className="input" type="date" value={f.fecha_inicio} onChange={(e) => upd("fecha_inicio", e.target.value)} /></div>
-          <div className="field"><label>Fecha L\u00edmite</label><input className="input" type="date" value={f.fecha_limite} onChange={(e) => upd("fecha_limite", e.target.value)} /></div>
+          <div className="field"><label>Fecha Límite</label><input className="input" type="date" value={f.fecha_limite} onChange={(e) => upd("fecha_limite", e.target.value)} /></div>
         </div>
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
           <div className="field"><label>Estado</label><select className="input" value={f.estado} onChange={(e) => upd("estado", e.target.value)}>{ESTADOS.map((s) => <option key={s.id} value={s.id}>{s.label}</option>)}</select></div>
           <div className="field"><label>Prioridad</label><select className="input" value={f.prioridad} onChange={(e) => upd("prioridad", e.target.value)}>{PRIORIDADES.map((p) => <option key={p.id} value={p.id}>{p.label}</option>)}</select></div>
         </div>
-        <div className="field"><label>Descripci\u00f3n detallada</label><textarea className="input" placeholder="Descripci\u00f3n extendida..." value={f.descripcion} onChange={(e) => upd("descripcion", e.target.value)} rows={3} /></div>
+        <div className="field"><label>Descripción detallada</label><textarea className="input" placeholder="Descripción extendida..." value={f.descripcion} onChange={(e) => upd("descripcion", e.target.value)} rows={3} /></div>
         <div className="field"><label>Notas / Seguimiento</label><textarea className="input" placeholder="Comentarios, avances..." value={f.notas} onChange={(e) => upd("notas", e.target.value)} rows={2} /></div>
         <div className="modal-foot">
           <button className="btn btn-outline" onClick={onClose}>Cancelar</button>
@@ -287,7 +224,7 @@ const DetailModal = ({ task, onClose, onEdit }) => {
         </div>
         {task.descripcion && (
           <div style={{ background: "var(--gray-bg)", borderRadius: "var(--radius)", padding: "14px 16px", marginBottom: 16, border: "1px solid var(--gray-light)" }}>
-            <div style={{ fontSize: 10, fontWeight: 700, color: "var(--gray-mid)", textTransform: "uppercase", letterSpacing: 0.5, marginBottom: 6 }}>Descripci\u00f3n</div>
+            <div style={{ fontSize: 10, fontWeight: 700, color: "var(--gray-mid)", textTransform: "uppercase", letterSpacing: 0.5, marginBottom: 6 }}>Descripción</div>
             <p style={{ fontSize: 13, color: "var(--black)", lineHeight: 1.7, whiteSpace: "pre-wrap" }}>{task.descripcion}</p>
           </div>
         )}
@@ -301,9 +238,9 @@ const DetailModal = ({ task, onClose, onEdit }) => {
             <div style={{ fontSize: 13, fontFamily: "var(--mono)" }}>{fmtDate(task.fecha_inicio)}</div>
           </div>
           <div style={{ background: "var(--gray-bg)", borderRadius: "var(--radius)", padding: "10px 14px", border: "1px solid var(--gray-light)" }}>
-            <div style={{ fontSize: 10, fontWeight: 700, color: "var(--gray-mid)", textTransform: "uppercase", letterSpacing: 0.5, marginBottom: 4 }}>L\u00edmite</div>
+            <div style={{ fontSize: 10, fontWeight: 700, color: "var(--gray-mid)", textTransform: "uppercase", letterSpacing: 0.5, marginBottom: 4 }}>Límite</div>
             <div style={{ fontSize: 13, fontFamily: "var(--mono)", color: active && d < 0 ? "var(--danger)" : active && d <= 7 ? "var(--yellow)" : undefined }}>{fmtDate(task.fecha_limite)}</div>
-            {active && d !== null && <div style={{ fontSize: 10, marginTop: 2, color: d < 0 ? "var(--danger)" : d <= 7 ? "#92400E" : "var(--green)" }}>{d < 0 ? `Vencido hace ${Math.abs(d)} d\u00edas` : `${d} d\u00edas restantes`}</div>}
+            {active && d !== null && <div style={{ fontSize: 10, marginTop: 2, color: d < 0 ? "var(--danger)" : d <= 7 ? "#92400E" : "var(--green)" }}>{d < 0 ? `Vencido hace ${Math.abs(d)} días` : `${d} días restantes`}</div>}
           </div>
         </div>
         {task.notas && (
@@ -325,6 +262,8 @@ const ConfigModal = ({ onClose, areas, onUpdate }) => {
   const [la, setLa] = useState(areas.map((a) => ({ ...a })));
   const [na, setNa] = useState(""); const [np, setNp] = useState("");
   const [saved, setSaved] = useState(false); const [saving, setSaving] = useState(false);
+  const [showPw, setShowPw] = useState({});
+  const togglePw = (nombre) => setShowPw((p) => ({ ...p, [nombre]: !p[nombre] }));
   const add = () => {
     const n = na.trim();
     if (!n || la.find((a) => a.nombre === n)) return;
@@ -341,21 +280,29 @@ const ConfigModal = ({ onClose, areas, onUpdate }) => {
   };
   return (
     <div className="overlay" onClick={onClose}><div className="modal" onClick={(e) => e.stopPropagation()} style={{ width: 580 }}>
-      <h2>Configurar {"\u00C1"}reas y Contrase\u00f1as</h2>
+      <h2>Configurar \u00c1reas y Contrase\u00f1as</h2>
       <p style={{ fontSize: 13, color: "var(--gray-dark)", marginBottom: 18 }}>Cada \u00e1rea tiene su propia contrase\u00f1a de acceso.</p>
       <div>{la.map((a) => (
         <div className="area-row" key={a.nombre}>
           <span className="aname">{a.nombre}</span>
           <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-            <input className="input" style={{ width: 130, padding: "5px 10px", fontSize: 12, fontFamily: "var(--mono)" }}
-              value={a.password || ""} onChange={(e) => updPw(a.nombre, e.target.value)} placeholder="nueva contrase\u00f1a" />
+            <div style={{ position: "relative", display: "flex", alignItems: "center" }}>
+              <input className="input" style={{ width: 130, padding: "5px 10px", fontSize: 12, fontFamily: "var(--mono)", paddingRight: 32 }}
+                type={showPw[a.nombre] ? "text" : "password"}
+                value={a.password} onChange={(e) => updPw(a.nombre, e.target.value)} placeholder="contrase\u00f1a" />
+              <button type="button" onClick={() => togglePw(a.nombre)}
+                style={{ position: "absolute", right: 4, background: "none", border: "none", cursor: "pointer", fontSize: 14, padding: "2px 4px", color: "var(--gray-mid)" }}
+                title={showPw[a.nombre] ? "Ocultar" : "Mostrar"}>
+                {showPw[a.nombre] ? "\uD83D\uDE48" : "\uD83D\uDC41\uFE0F"}
+              </button>
+            </div>
             <button className="btn btn-danger-outline btn-sm" onClick={() => rm(a.nombre)}>{"\u2715"}</button>
           </div>
         </div>
       ))}</div>
       <div className="add-row">
         <input className="input" placeholder="Nueva \u00e1rea" value={na} onChange={(e) => setNa(e.target.value)} onKeyDown={(e) => e.key === "Enter" && add()} />
-        <input className="input" style={{ maxWidth: 130, fontFamily: "var(--mono)", fontSize: 12 }} placeholder="contrase\u00f1a" value={np} onChange={(e) => setNp(e.target.value)} onKeyDown={(e) => e.key === "Enter" && add()} />
+        <input className="input" style={{ maxWidth: 130, fontFamily: "var(--mono)", fontSize: 12 }} placeholder="contrase\u00f1a" type="password" value={np} onChange={(e) => setNp(e.target.value)} onKeyDown={(e) => e.key === "Enter" && add()} />
         <button className="btn btn-ghost btn-sm" onClick={add}>+ Agregar</button>
       </div>
       {saved && <div className="ok-msg" style={{ marginTop: 10 }}>{"\u2713"} Guardado</div>}
@@ -370,6 +317,15 @@ const ConfigModal = ({ onClose, areas, onUpdate }) => {
 /* ========== MAIN APP ========== */
 
 export default function App() {
+  // Ensure UTF-8 charset meta tag exists
+  useEffect(() => {
+    if (!document.querySelector('meta[charset]')) {
+      const meta = document.createElement('meta');
+      meta.setAttribute('charset', 'UTF-8');
+      document.head.prepend(meta);
+    }
+  }, []);
+
   const [user, setUser] = useState(null);
   const [tasks, setTasks] = useState([]);
   const [areas, setAreas] = useState([]);
@@ -381,41 +337,11 @@ export default function App() {
   const [tab, setTab] = useState("todas");
   const [filtro, setFiltro] = useState("todos");
   const [filtroPri, setFiltroPri] = useState("todos");
-  const [confirmDelete, setConfirmDelete] = useState(null);
-  const sessionCheckRef = useRef(null);
-
-  // Session management
-  useEffect(() => {
-    const saved = getSession();
-    if (saved) setUser(saved);
-  }, []);
-
-  useEffect(() => {
-    // Check session expiry every minute
-    sessionCheckRef.current = setInterval(() => {
-      if (user) {
-        const s = getSession();
-        if (!s) { setUser(null); }
-        else { refreshSession(); }
-      }
-    }, 60000);
-    return () => clearInterval(sessionCheckRef.current);
-  }, [user]);
-
-  const handleLogin = (u) => {
-    const s = setSession(u);
-    setUser(s);
-  };
-  const handleLogout = () => {
-    clearSession();
-    setUser(null);
-    setTab("todas"); setFiltro("todos"); setFiltroPri("todos");
-  };
 
   // Load data from Supabase
   const loadData = useCallback(async () => {
     const [areasRes, tasksRes] = await Promise.all([
-      supabase.from("areas").select("id,nombre").order("id"),
+      supabase.from("areas").select("*").order("id"),
       supabase.from("actividades").select("*").order("id"),
     ]);
     if (areasRes.data) setAreas(areasRes.data);
@@ -426,13 +352,11 @@ export default function App() {
   useEffect(() => { loadData(); }, [loadData]);
 
   const saveTask = useCallback(async (task) => {
-    const isG = user?.role === "gerente";
     const row = {
       area: task.area, actividad: task.actividad, responsable: task.responsable,
       fecha_inicio: task.fecha_inicio || null, fecha_limite: task.fecha_limite,
       estado: task.estado, prioridad: task.prioridad || "media",
       notas: task.notas || "", descripcion: task.descripcion || "",
-      visto_gerencia: isG ? true : false,
     };
     if (task.id) {
       await supabase.from("actividades").update(row).eq("id", task.id);
@@ -441,51 +365,33 @@ export default function App() {
     }
     await loadData();
     setEditTask(null);
-  }, [loadData, user]);
+  }, [loadData]);
 
   const updField = useCallback(async (id, k, v) => {
-    const isG = user?.role === "gerente";
-    const upd = { [k]: v };
-    if (!isG) upd.visto_gerencia = false;
-    await supabase.from("actividades").update(upd).eq("id", id);
-    setTasks((p) => p.map((t) => t.id === id ? { ...t, ...upd } : t));
-  }, [user]);
-
-  const deleteTask = useCallback(async (id) => {
-    await supabase.from("actividades").delete().eq("id", id);
-    setTasks((p) => p.filter((t) => t.id !== id));
-    setConfirmDelete(null);
+    await supabase.from("actividades").update({ [k]: v }).eq("id", id);
+    setTasks((p) => p.map((t) => t.id === id ? { ...t, [k]: v } : t));
   }, []);
-
-  const markSeen = useCallback(async (task) => {
-    if (user?.role === "gerente" && !task.visto_gerencia) {
-      await supabase.from("actividades").update({ visto_gerencia: true }).eq("id", task.id);
-      setTasks((p) => p.map((t) => t.id === task.id ? { ...t, visto_gerencia: true } : t));
-    }
-    setDetailTask(task);
-  }, [user]);
 
   const updAreas = useCallback(async (newAreas) => {
     const current = areas.map((a) => a.nombre);
     const updated = newAreas.map((a) => a.nombre);
+    // Delete removed
     const removed = current.filter((n) => !updated.includes(n));
     for (const n of removed) {
       await supabase.from("areas").delete().eq("nombre", n);
     }
+    // Upsert all
     for (const a of newAreas) {
       if (a.isNew) {
-        await supabase.from("areas").insert({ nombre: a.nombre, password: a.password, password_hash: a.password });
-      } else if (a.changed && a.password) {
-        // Update password hash via raw SQL (need to hash it)
-        await supabase.rpc("verify_login", { input_password: "dummy" }); // just to test connection
+        await supabase.from("areas").insert({ nombre: a.nombre, password: a.password });
+      } else if (a.changed) {
         await supabase.from("areas").update({ password: a.password }).eq("nombre", a.nombre);
-        // Re-hash: we need a server function for this, for now update plain text
-        // In production, create a Supabase Edge Function for this
       }
     }
     await loadData();
   }, [areas, loadData]);
 
+  const handleLogout = () => { setUser(null); setTab("todas"); setFiltro("todos"); setFiltroPri("todos"); };
   const isG = user?.role === "gerente";
 
   const filtered = useMemo(() => {
@@ -501,11 +407,6 @@ export default function App() {
     });
   }, [tasks, user, tab, filtro, filtroPri, isG]);
 
-  const unseenCount = useMemo(() => {
-    if (!isG) return 0;
-    return tasks.filter((t) => !t.visto_gerencia).length;
-  }, [tasks, isG]);
-
   const stats = useMemo(() => {
     const scope = isG ? tasks : tasks.filter((t) => t.area === user?.area);
     const total = scope.length;
@@ -518,7 +419,7 @@ export default function App() {
   }, [tasks, user, isG]);
 
   if (!loaded) return <div className="app"><style>{CSS}</style><div className="loading">Cargando...</div></div>;
-  if (!user) return <div className="app"><style>{CSS}</style><Login onLogin={handleLogin} /></div>;
+  if (!user) return <div className="app"><style>{CSS}</style><Login onLogin={setUser} areas={areas} /></div>;
 
   return (
     <div className="app">
@@ -529,7 +430,6 @@ export default function App() {
           <span className="name">caja <b>cusco</b></span>
           <span className="pipe" />
           <span className={`topbar-badge ${isG ? "gerente" : "area"}`}>{isG ? "GERENTE" : user.area}</span>
-          {isG && unseenCount > 0 && <span style={{ background: "var(--red)", color: "white", fontSize: 10, fontWeight: 700, padding: "2px 8px", borderRadius: 10, fontFamily: "var(--mono)" }}>{unseenCount} nuevo{unseenCount > 1 ? "s" : ""}</span>}
         </div></div>
         <div className="topbar-right">
           {isG && <button className="btn btn-outline btn-sm" onClick={() => setShowConfig(true)}>{"\u2699"} Configurar</button>}
@@ -574,17 +474,16 @@ export default function App() {
           ) : (
             <div className="responsive">
               <table>
-                <thead><tr>{isG && <th>{'Área'}</th>}<th>Actividad</th><th>Responsable</th><th>Inicio</th><th>L\u00edmite</th><th>Estado</th><th>Plazo</th><th>Notas</th><th></th></tr></thead>
+                <thead><tr>{isG && <th>Área</th>}<th>Actividad</th><th>Responsable</th><th>Inicio</th><th>Límite</th><th>Estado</th><th>Plazo</th><th>Notas</th><th></th></tr></thead>
                 <tbody>
                   {filtered.map((t) => {
                     const d = daysDiff(t.fecha_limite);
                     const active = !["completado", "cancelado"].includes(t.estado);
                     const est = ESTADOS.find((s) => s.id === t.estado);
-                    const isUnseen = isG && !t.visto_gerencia;
                     return (
-                      <tr key={t.id} onDoubleClick={() => markSeen(t)} style={isUnseen ? { background: "rgba(196,30,58,0.03)" } : undefined}>
+                      <tr key={t.id} onDoubleClick={() => setDetailTask(t)}>
                         {isG && <td><span className="area-tag">{t.area}</span></td>}
-                        <td><div className="task-name">{isUnseen && <span className="new-dot" />}{t.actividad}</div></td>
+                        <td><div className="task-name">{t.actividad}</div></td>
                         <td style={{ whiteSpace: "nowrap" }}>{t.responsable}</td>
                         <td><span className="date-cell">{fmtDate(t.fecha_inicio)}</span></td>
                         <td><span className={`date-cell ${active && d < 0 ? "overdue" : active && d <= 7 ? "soon" : ""}`}>{fmtDate(t.fecha_limite)}</span></td>
@@ -598,12 +497,7 @@ export default function App() {
                         </td>
                         <td><DaysBadge fecha={t.fecha_limite} estado={t.estado} /></td>
                         <td><div className="task-notes">{t.notas}</div></td>
-                        <td>
-                          <div style={{ display: "flex", gap: 4 }}>
-                            <button className="btn btn-outline btn-sm" onClick={(e) => { e.stopPropagation(); setEditTask(t); setShowForm(true); }}>{"\u270F\uFE0F"}</button>
-                            <button className="btn btn-danger-outline btn-sm" onClick={(e) => { e.stopPropagation(); setConfirmDelete(t); }}>{"\uD83D\uDDD1\uFE0F"}</button>
-                          </div>
-                        </td>
+                        <td><button className="btn btn-outline btn-sm" onClick={(e) => { e.stopPropagation(); setEditTask(t); setShowForm(true); }}>{"\u270F\uFE0F"}</button></td>
                       </tr>
                     );
                   })}
@@ -617,7 +511,6 @@ export default function App() {
       {showForm && <TaskForm onClose={() => { setShowForm(false); setEditTask(null); }} onSave={saveTask} areasList={areas} edit={editTask} userArea={isG ? null : user.area} />}
       {showConfig && <ConfigModal onClose={() => setShowConfig(false)} areas={areas} onUpdate={updAreas} />}
       {detailTask && <DetailModal task={detailTask} onClose={() => setDetailTask(null)} onEdit={(t) => { setEditTask(t); setShowForm(true); }} />}
-      {confirmDelete && <ConfirmDialog message={`\u00bfEliminar "${confirmDelete.actividad}"? Esta acci\u00f3n no se puede deshacer.`} onConfirm={() => deleteTask(confirmDelete.id)} onCancel={() => setConfirmDelete(null)} />}
     </div>
   );
 }
