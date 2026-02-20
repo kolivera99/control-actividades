@@ -457,7 +457,7 @@ export default function App() {
         </div>
 
         {page === "dashboard" ? (
-          <Dashboard tasks={isG ? tasks : tasks.filter((t) => t.area === user?.area)} areas={isG ? areas : areas.filter((a) => a.nombre === user?.area)} weekOffset={weekOffset} setWeekOffset={setWeekOffset} />
+          <Dashboard tasks={tasks} areas={areas} weekOffset={weekOffset} setWeekOffset={setWeekOffset} />
         ) : (<>
           {isG && (<div className="tabs">
             <button className={`tab ${tab === "todas" ? "active" : ""}`} onClick={() => setTab("todas")}>Todas</button>
